@@ -23,14 +23,14 @@ def report_create(request):
 
 @api_view(['POST'])
 def query_chatgpt(request):
-    user_question = request.data.get("question", "")
+    user_question = request.data.get("message", "")
     system_prompt = "You are a psychologist and executive coach analyzing psychometric assessment reports for a client."
 
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_question or "How may I improve myself as an introverted sales manager?"}
+        {"role": "user", "content": user_question}
     ]
 
     try:
