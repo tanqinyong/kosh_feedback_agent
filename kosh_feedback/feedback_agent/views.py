@@ -15,14 +15,14 @@ from openai import OpenAI
 # Setup Vector DB and RAG stuff
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 
 # Actual prompting
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage, HumanMessage
-
+from langchain.chains import create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
 
 @api_view(['POST'])
 def report_create(request):
@@ -34,25 +34,42 @@ def report_create(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# LangChain API 4:42
 @api_view(['POST'])
 def query_chatgpt(request):
 
-    # Set up model
+    # Step 1: Load FAISS vector store
+    index_dir = os.path.join(settings.BASE_DIR, "vectorstores", "sample_index")
+    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+    vectorstore = FAISS.load_local(index_dir, embeddings, allow_dangerous_deserialization=True)
+
+    # Step 2: Set up retriever
+    retriever = vectorstore.as_retriever(search_type="similarity",search_kwargs={"k": 5})
+
+    # Step 3: Set up LLM
     model = ChatOpenAI(model="gpt-4o", temperature=0.5)
 
-    # Set up prompt and user question
-    user_question = request.data.get("message", "")
-    prompt_template = ChatPromptTemplate.from_messages([
-        ("system", "You are a psychologist and executive coach analyzing psychometric assessment reports for a client."),
-        ("user", "{user_question}"),
+    # Step 4: Set up prompt 
+    system_prompt = (
+        "You are a psychologist and executive coach. Use the given context from sample psychometric assessments "
+        "to analyse the client's report and provide feedback. \n\n"
+        "Context:\n{context}"
+    )
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system_prompt),
+        ("user", "{input}"),
     ])
 
-    # Set up chain
-    chain = prompt_template | model
-    result = chain.invoke({"user_question": user_question})
+    # Step 5: Set up chain
+    question_answer_chain = create_stuff_documents_chain(model, prompt)
+    chain = create_retrieval_chain(retriever, question_answer_chain)
 
-    return Response({"response": result.content})
+    # Step 6:Invoke chain with user input
+    user_question = request.data.get("message", "")
+    try:
+        result = chain.invoke({"input": user_question})
+        return Response({"response": result["answer"]})
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
 
 
 # Run when change PDF set to setup/update vector store based on data in RAG_data folder
