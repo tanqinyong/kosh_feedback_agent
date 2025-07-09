@@ -36,22 +36,41 @@ def report_create(request):
 
 @api_view(['POST'])
 def query_chatgpt(request):
+    user_question = request.data.get("message", "")
 
-    # Step 1: Load FAISS vector store
+    try:
+        vectorstore = load_vector_db()
+        chain = build_rag_chain(vectorstore)
+        result = chain.invoke({"input": user_question})
+        return Response({"response": result["answer"]})
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+# Load vector store 
+def load_vector_db():
     index_dir = os.path.join(settings.BASE_DIR, "vectorstores", "sample_index")
     embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
     vectorstore = FAISS.load_local(index_dir, embeddings, allow_dangerous_deserialization=True)
+    return vectorstore
+    
+# Build RAG chain
+def build_rag_chain(vectorstore):
 
-    # Step 2: Set up retriever
+    # Set up retriever and model
     retriever = vectorstore.as_retriever(search_type="similarity",search_kwargs={"k": 5})
-
-    # Step 3: Set up LLM
     model = ChatOpenAI(model="gpt-4o", temperature=0.5)
 
-    # Step 4: Set up prompt 
+    # Set up prompt 
     system_prompt = (
         "You are a psychologist and executive coach. Use the given context from sample psychometric assessments "
         "to analyse the client's report and provide feedback. \n\n"
+        "**Always format your response using Markdown.** Use:\n"
+        "- Headings for sections (`## Heading`)\n"
+        "- Numbered or bulleted lists for points\n"
+        "- Bold (`**`) for key phrases\n"
+        "- Italics (`_`) for subtle emphasis\n"
+        "- Markdown tables if needed\n"
+        "- Keep paragraphs concise and break up long text\n\n"
         "Context:\n{context}"
     )
     prompt = ChatPromptTemplate.from_messages([
@@ -59,26 +78,21 @@ def query_chatgpt(request):
         ("user", "{input}"),
     ])
 
-    # Step 5: Set up chain
+    # Set up chain
     question_answer_chain = create_stuff_documents_chain(model, prompt)
     chain = create_retrieval_chain(retriever, question_answer_chain)
-
-    # Step 6:Invoke chain with user input
-    user_question = request.data.get("message", "")
-    try:
-        result = chain.invoke({"input": user_question})
-        return Response({"response": result["answer"]})
-    except Exception as e:
-        return Response({"error": str(e)}, status=500)
+    return chain
 
 
+
+# Set up vector store
 # Run when change PDF set to setup/update vector store based on data in RAG_data folder
 @api_view(['POST'])
 def setup_vector_db(request):
-    data_folder = os.path.join(settings.BASE_DIR, "RAG_data")# Maybe add kosh_feedback if this don't work
+    data_folder = os.path.join(settings.BASE_DIR, "RAG_data") 
     all_chunks = []
 
-    # Chunk all PDFs
+    # Step 1: Chunk all PDFs
     for filename in os.listdir(data_folder):
         if filename.endswith(".pdf"):
             pdf_path = os.path.join(data_folder, filename)
@@ -89,11 +103,11 @@ def setup_vector_db(request):
             chunks = text_splitter.split_documents(docs)
             all_chunks.extend(chunks)
 
-    # Embed all chunks
+    # Step 2: Embed all chunks
     embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
     db = FAISS.from_documents(all_chunks, embeddings)
 
-    # Save vectorstore
+    # Step 3: Save vectorstore
     index_dir = os.path.join(settings.BASE_DIR, "vectorstores", "sample_index")
     os.makedirs(index_dir, exist_ok=True)
     db.save_local(index_dir)

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import ReactMarkdown from "react-markdown";
 
 function App() {
   const [input, setInput] = useState("");
@@ -43,8 +44,8 @@ function App() {
           <div className="w-8 h-8 rounded-xl bg-white flex-shrink-0">
             <img src="/kosh.png" alt="AI Avatar" className="w-full h-full rounded-xl" />
           </div>
-          <div className="message">
-            {message.message}
+          <div className="message prose prose-sm prose-invert max-w-none">
+            <ReactMarkdown>{message.message}</ReactMarkdown>
           </div>
         </div>
       </div>
@@ -58,8 +59,8 @@ function App() {
           <div className="w-8 h-8 rounded-xl bg-white flex-shrink-0">
             <img src="https://i.pravatar.cc/150?img=31" alt="Human Avatar" className="w-full h-full rounded-xl" />
           </div>
-          <div className="message">
-            {message.message}
+          <div className="message prose prose-sm prose-invert max-w-none">
+            <ReactMarkdown>{message.message}</ReactMarkdown>
           </div>
         </div>
       </div>
