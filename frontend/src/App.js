@@ -1,19 +1,32 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 
 function App() {
   const [input, setInput] = useState("");
+  const [files, setFiles] = useState([]);
+
   const [chatLog, setChatLog] = useState([{
     user: "gpt",
     message: "Welcome to Kosh Feedback Agent! Upload your report and I'll give you some feedback."
   }, 
   ]);
 
+  const fileInputRef = useRef(); 
+
   function clearChat() {
     setChatLog([{
       user: "gpt",
       message: "Welcome to Kosh Feedback Agent! Upload your report and I'll give you some feedback."
     }]);
+    setFiles([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = null;
+    }
+  }
+
+  function handleMultipleChange(e) {
+    const files = Array.from(e.target.files);
+    setFiles(files);
   }
 
   async function handleSubmit(e) {
@@ -21,20 +34,35 @@ function App() {
     setChatLog(chatLog => [...chatLog, { user: "Me", message: `${input}`} ]);
     setInput("");
 
+    // Set up form data
+    const formData = new FormData();
+
+    // All chat history + new question
+    const chat = chatLog.map((message) => message.message).join("\n") + "\n\n" 
+                            + "Latest user query (to answer): " + input;
+    formData.append("message", chat);
+
+    // Append each file to formData
+    for (let i = 0; i < files.length; i++) {
+      formData.append("files", files[i]);  // "files" must match Django's key
+    }
+
+    // Clear files and reset input
+    setFiles([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = null;
+    }
+
     // Fetch response from API
     const response = await fetch("http://www.localhost:8000/api/query_chatgpt/", {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        // Entire chat history
-        message: chatLog.map((message) => message.message).join("\n") + "\n\n" + "Latest user query (to answer): " + input
-      })
+      body: formData,
     });
 
     const data = await response.json();
     setChatLog(chatLog => [...chatLog, { user: "gpt", message: `${data.response}`} ]);
+
+
   }
 
   const ChatMessageGPT = ({ message }) => {
@@ -93,11 +121,16 @@ function App() {
         {/* Chat Input */}
         <div className="flex flex-row w-4/5 absolute bottom-3 left-1/2 transform -translate-x-1/2">
           <form onSubmit={handleSubmit} className="flex flex-row w-full">
-            <input className="flex-1 p-2 m-1 border border-none rounded-md bg-gray-600 outline-none shadow-lg " 
+            <input className="flex-1 p-2 m-1 border border-none rounded-md bg-gray-800 outline-none shadow-lg " 
                    value={input}
                    onChange={(e) => setInput(e.target.value)}
                    placeholder="Ask Kosh Agent for some feedback!"></input>
-            <button onClick={handleSubmit} className="flex-none p-2 m-1 rounded-md bg-gray-800 text-white ">↵</button>
+            {/* PDF */}
+            <input className="flex-none p-2 m-1 rounded-md bg-gray-800 text-white "
+                   multiple onChange={handleMultipleChange}
+                   ref={fileInputRef}
+                   type="file"></input>
+            <button onClick={handleSubmit} className="flex-none p-2 px-3 m-1 rounded-md bg-gray-800 text-white ">↵</button>
           </form>
         </div>
 

@@ -1,4 +1,5 @@
 import os
+import tempfile
 
 from django.shortcuts import render
 from django.conf import settings
@@ -14,6 +15,7 @@ from openai import OpenAI
 
 # Setup Vector DB and RAG stuff
 from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.document_loaders import PyMuPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 
@@ -36,16 +38,38 @@ def report_create(request):
 
 @api_view(['POST'])
 def query_chatgpt(request):
-    user_question = request.data.get("message", "")
+    user_question = request.POST.get("message")  # Full chat history string
+    files = request.FILES.getlist("files")  # List of uploaded PDF files
+
+    user_doc_text = process_pdf_files(files)
+    message = f"User uploaded report:\n{user_doc_text}\n\nQuestion:\n{user_question}"
 
     try:
         vectorstore = load_vector_db()
         chain = build_rag_chain(vectorstore)
-        result = chain.invoke({"input": user_question})
+        result = chain.invoke({"input": message})
         return Response({"response": result["answer"]})
     except Exception as e:
         return Response({"error": str(e)}, status=500)
 
+# Process all user PDFs as texts
+def process_pdf_files(files):
+    all_text = ""
+    for f in files:
+        # Create a temp file that won't auto-delete (Windows compatibility)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+            tmp_file.write(f.read())
+            tmp_file_path = tmp_file.name
+
+        try:
+            loader = PyMuPDFLoader(tmp_file_path)
+            docs = loader.load()
+            for d in docs:
+                all_text += d.page_content + "\n"
+        finally:
+            os.remove(tmp_file_path)  # Clean up
+    return all_text
+    
 # Load vector store 
 def load_vector_db():
     index_dir = os.path.join(settings.BASE_DIR, "vectorstores", "sample_index")
@@ -82,7 +106,6 @@ def build_rag_chain(vectorstore):
     question_answer_chain = create_stuff_documents_chain(model, prompt)
     chain = create_retrieval_chain(retriever, question_answer_chain)
     return chain
-
 
 
 # Set up vector store
