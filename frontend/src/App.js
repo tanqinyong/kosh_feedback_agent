@@ -36,11 +36,7 @@ function App() {
 
     // Set up form data
     const formData = new FormData();
-
-    // All chat history + new question
-    const chat = chatLog.map((message) => message.message).join("\n") + "\n\n" 
-                            + "Latest user query (to answer): " + input;
-    formData.append("message", chat);
+    formData.append("message", input);
 
     // Append each file to formData
     for (let i = 0; i < files.length; i++) {
@@ -53,19 +49,48 @@ function App() {
       fileInputRef.current.value = null;
     }
 
-    // Fetch response from API
-    const response = await fetch("http://www.localhost:8000/api/query_chatgpt/", {
-      method: 'POST',
-      body: formData,
-    });
+    try {
+      const response = await fetch("http://www.localhost:8000/api/query_chatgpt/", {
+        method: "POST",
+        body: formData,
+      });
 
-    const data = await response.json();
-    setChatLog(chatLog => [...chatLog, { user: "gpt", message: `${data.response}`} ]);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
+      const data = await response.json();
 
+      let gptMessage = { user: "gpt", message: data.response };
+
+      // Check if PDF info is present AND is a success
+      if (data.pdf_info && data.pdf_info.status === "success" && data.pdf_info.url) {
+        gptMessage.pdfUrl = data.pdf_info.url;
+        gptMessage.pdfFilename = data.pdf_info.filename || "summary.pdf"; // Use provided filename or default
+        // You might want to append a small text to the message itself as well
+        gptMessage.message += "\n\n(A session summary PDF has been generated.)";
+      } else if (data.pdf_info && data.pdf_info.status === "error") {
+          gptMessage.message += `\n\n(PDF generation failed: ${data.pdf_info.message})`;
+      }
+
+      setChatLog((chatLog) => [...chatLog, gptMessage]);
+
+    } catch (error) {
+      console.error("Error fetching data:", error);
+      setChatLog((chatLog) => [
+        ...chatLog,
+        { user: "gpt", message: `Error: Could not get a response. ${error.message}` },
+      ]);
+    }
   }
-
   const ChatMessageGPT = ({ message }) => {
+    // Define your Django backend base URL
+    // Use a variable for this so it's easy to change for production or different dev setups
+    const DJANGO_BASE_URL = "http://localhost:8000"; 
+  
+    // Construct the absolute URL for the PDF
+    const absolutePdfUrl = message.pdfUrl ? `${DJANGO_BASE_URL}${message.pdfUrl}` : null;
+  
     return (
       <div className="bg-gray-600">
         <div className="flex w-full p-2 gap-3 mx-auto px-4">
@@ -74,11 +99,25 @@ function App() {
           </div>
           <div className="message prose prose-sm prose-invert max-w-none">
             <ReactMarkdown>{message.message}</ReactMarkdown>
+            {/* Conditionally render the PDF download link */}
+            {absolutePdfUrl && ( // Use absolutePdfUrl here
+              <p className="mt-2">
+                <a
+                  href={absolutePdfUrl} 
+                  download={message.pdfFilename}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-400 hover:underline"
+                >
+                  Download Session Summary PDF
+                </a>
+              </p>
+            )}
           </div>
         </div>
       </div>
     );
-  };  
+  };
 
   const ChatMessageUser = ({ message }) => {
     return (
@@ -102,8 +141,8 @@ function App() {
       <aside className="w-1/5 p-2 border bg-gray-800 border-gray-700 ">
         <div className="flex p-2 items-center gap-2 border rounded-sm border-white hover:bg-white hover:bg-opacity-10 transition-all duration-300"
              onClick={clearChat}>
-          <span>+</span>
-          New Chat
+          <span>#</span>
+          Clear Chat
         </div>
       </aside>
 
@@ -130,7 +169,7 @@ function App() {
                    multiple onChange={handleMultipleChange}
                    ref={fileInputRef}
                    type="file"></input>
-            <button onClick={handleSubmit} className="flex-none p-2 px-3 m-1 rounded-md bg-gray-800 text-white ">↵</button>
+            <button type="submit" className="flex-none p-2 px-3 m-1 rounded-md bg-gray-800 text-white ">↵</button>
           </form>
         </div>
 

@@ -19,6 +19,10 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Media files (user-uploaded or dynamically generated)
+MEDIA_URL = '/media/'  # The URL prefix for accessing media files
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media') # The absolute path to the directory
+
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
